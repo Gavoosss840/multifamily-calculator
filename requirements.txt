@@ -4,3 +4,4 @@ pandas
 numpy
 numpy-financial
 fpdf2
+matplotlib
