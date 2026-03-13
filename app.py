@@ -353,8 +353,8 @@ tabs = st.tabs([
     "🔨 BRRRR",
     "🌍 Market Data",
     "📊 Deal vs Market",
-    "💾 Save / Load / PDF",
     "📖 Dictionary & Formulas",
+    "💾 Save / Load / PDF",
 ])
 
 # ──────────────────────────────────────────────────────────────────────────────

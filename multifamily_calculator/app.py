@@ -352,8 +352,9 @@ tabs = st.tabs([
     "🔄 Refinance",
     "🔨 BRRRR",
     "🌍 Market Data",
-    "💾 Save / Load / PDF",
+    "📊 Deal vs Market",
     "📖 Dictionary & Formulas",
+    "💾 Save / Load / PDF",
 ])
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -688,7 +689,7 @@ with tabs[5]:
 # ──────────────────────────────────────────────────────────────────────────────
 #  TAB 7 — SAVE / LOAD / PDF
 # ──────────────────────────────────────────────────────────────────────────────
-with tabs[6]:
+with tabs[8]:
     st.subheader("💾 Profile Management")
     col_save, col_load = st.columns(2)
 
@@ -728,93 +729,482 @@ with tabs[6]:
 
     st.divider()
     st.subheader("📄 PDF Investment Report")
-    if st.button("🖨️ Generate PDF Report", use_container_width=True, type="primary"):
+if st.button("🖨️ Generate PDF Report", use_container_width=True, type="primary"):
         try:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
             from fpdf import FPDF
+            import tempfile, io
+
+            BRAND_RED  = (93, 1, 19)
+            BLACK      = (0, 0, 0)
+            LIGHT_GRAY = (245, 245, 245)
+            WHITE      = (255, 255, 255)
+            MID_GRAY   = (120, 120, 120)
+
+            def fig_to_png(fig):
+                buf = io.BytesIO()
+                fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor="white")
+                plt.close(fig)
+                buf.seek(0)
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                tmp.write(buf.read())
+                tmp.close()
+                return tmp.name
+
+            # Chart 1 — Expense Donut
+            fig1, ax1 = plt.subplots(figsize=(5, 4), facecolor="white")
+            colors1 = ["#5d0113","#8b1a2b","#b22234","#cc3344","#e05566","#f07788","#f8aab0"]
+            wedges, texts, autotexts = ax1.pie(
+                list(expenses.values()), labels=list(expenses.keys()),
+                autopct="%1.1f%%", colors=colors1, startangle=140,
+                wedgeprops=dict(width=0.55),
+                textprops=dict(color="black", fontsize=8),
+            )
+            for at in autotexts: at.set_color("white"); at.set_fontsize(7)
+            ax1.set_title("Expense Breakdown", color="#5d0113", fontweight="bold", fontsize=11)
+            chart1_path = fig_to_png(fig1)
+
+            # Chart 2 — Cash Flow Projection
+            df = r["proj_df"]
+            fig2, ax2 = plt.subplots(figsize=(7, 3.5), facecolor="white")
+            bar_colors = ["#5d0113" if v >= 0 else "#cc0000" for v in df["Cash Flow"]]
+            ax2.bar(df["Year"], df["Cash Flow"], color=bar_colors)
+            ax2_twin = ax2.twinx()
+            ax2_twin.plot(df["Year"], df["Cum. Cash Flow"], color="#333333", linewidth=2,
+                          marker="o", markersize=4, label="Cumulative CF")
+            ax2.set_title("Cash Flow Projection", color="#5d0113", fontweight="bold", fontsize=11)
+            ax2.set_xlabel("Year"); ax2.set_ylabel("Annual CF ($)")
+            ax2_twin.set_ylabel("Cumulative CF ($)")
+            ax2.tick_params(colors="black"); ax2_twin.tick_params(colors="black")
+            fig2.patch.set_facecolor("white")
+            chart2_path = fig_to_png(fig2)
+
+            # Chart 3 — Capital Stack
+            fig3, ax3 = plt.subplots(figsize=(5, 3.5), facecolor="white")
+            labels3 = ["Debt", "Down Payment", "Closing Costs", "Rehab"]
+            vals3   = [r["loan_amount"], r["down_payment"], r["closing_costs"], rehab_cost]
+            colors3 = ["#5d0113","#8b1a2b","#b22234","#cc3344"]
+            bars = ax3.bar(labels3, vals3, color=colors3)
+            for bar, val in zip(bars, vals3):
+                ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(vals3)*0.01,
+                         usd(val), ha="center", va="bottom", fontsize=7, color="black")
+            ax3.set_title("Capital Stack", color="#5d0113", fontweight="bold", fontsize=11)
+            ax3.tick_params(colors="black")
+            fig3.patch.set_facecolor("white")
+            chart3_path = fig_to_png(fig3)
+
+            # Chart 4 — NOI & Property Value
+            fig4, ax4 = plt.subplots(figsize=(7, 3.5), facecolor="white")
+            ax4.fill_between(df["Year"], df["NOI"], alpha=0.4, color="#5d0113", label="NOI")
+            ax4.plot(df["Year"], df["NOI"], color="#5d0113", linewidth=2)
+            ax4b = ax4.twinx()
+            ax4b.plot(df["Year"], df["Property Value"], color="#333333", linewidth=2,
+                      linestyle="--", label="Property Value")
+            ax4.set_title("NOI & Property Value", color="#5d0113", fontweight="bold", fontsize=11)
+            ax4.set_xlabel("Year"); ax4.set_ylabel("NOI ($)")
+            ax4b.set_ylabel("Property Value ($)")
+            ax4.tick_params(colors="black"); ax4b.tick_params(colors="black")
+            fig4.patch.set_facecolor("white")
+            chart4_path = fig_to_png(fig4)
+
+            # ── BUILD PDF ──────────────────────────────────────────────────
             class Report(FPDF):
                 def header(self):
-                    self.set_fill_color(6,14,26); self.rect(0,0,210,297,"F")
+                    self.set_fill_color(*WHITE)
+                    self.rect(0, 0, 210, 297, "F")
+
                 def section_title(self, txt):
-                    self.set_text_color(74,158,255); self.set_font("Helvetica","B",11)
-                    self.ln(3); self.cell(0,7,txt,ln=True)
-                    self.set_draw_color(30,51,82); self.set_line_width(0.3)
-                    self.line(self.get_x(), self.get_y(), 200, self.get_y())
-                    self.ln(2); self.set_text_color(226,240,255); self.set_font("Helvetica","",9)
-                def row(self, label, value):
-                    self.set_font("Helvetica","",9); self.set_text_color(107,138,168)
-                    self.cell(6); self.cell(90,5.5,label)
-                    self.set_font("Helvetica","B",9); self.set_text_color(226,240,255)
-                    self.cell(0,5.5,str(value),ln=True)
+                    self.set_fill_color(*LIGHT_GRAY)
+                    self.set_text_color(*BRAND_RED)
+                    self.set_font("Helvetica", "B", 11)
+                    self.ln(4)
+                    self.cell(0, 8, txt, ln=False, fill=True)
+                    self.ln(9)
+                    self.set_text_color(*BLACK)
+                    self.set_font("Helvetica", "", 9)
+
+                def row(self, label, value, shade=False):
+                    if shade:
+                        self.set_fill_color(*LIGHT_GRAY)
+                    else:
+                        self.set_fill_color(*WHITE)
+                    self.set_font("Helvetica", "", 9)
+                    self.set_text_color(*MID_GRAY)
+                    self.cell(8)
+                    self.cell(90, 5.5, label, fill=shade)
+                    self.set_font("Helvetica", "B", 9)
+                    self.set_text_color(*BLACK)
+                    self.cell(0, 5.5, str(value), ln=True, fill=shade)
+
+                def kpi_box(self, label, value):
+                    self.set_fill_color(*LIGHT_GRAY)
+                    self.set_draw_color(*BRAND_RED)
+                    self.set_line_width(0.4)
+                    self.rect(self.get_x(), self.get_y(), 42, 16, "DF")
+                    self.set_font("Helvetica", "", 7)
+                    self.set_text_color(*MID_GRAY)
+                    self.cell(42, 6, label, align="C")
+                    self.ln(6)
+                    self.set_font("Helvetica", "B", 11)
+                    self.set_text_color(*BRAND_RED)
+                    x = self.get_x()
+                    self.cell(42, 8, value, align="C")
+                    self.set_xy(x + 42, self.get_y() - 6)
+                    self.set_text_color(*BLACK)
+
             pdf = Report()
-            pdf.set_auto_page_break(auto=True, margin=12)
+            pdf.set_auto_page_break(auto=True, margin=15)
             pdf.add_page()
-            pdf.set_text_color(74,158,255); pdf.set_font("Helvetica","B",20)
-            pdf.ln(4); pdf.cell(0,12,"MULTIFAMILY INVESTMENT REPORT",ln=True,align="C")
-            pdf.set_text_color(226,240,255); pdf.set_font("Helvetica","",11)
-            pdf.cell(0,7,prop_name,ln=True,align="C")
-            pdf.cell(0,6,f"{prop_address}  |  ZIP {prop_zip}",ln=True,align="C")
-            pdf.set_text_color(107,138,168); pdf.set_font("Helvetica","",9)
-            pdf.cell(0,5,f"Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')}  |  {units} units  |  Mode: {mode_key}",ln=True,align="C")
+
+            # Logo + Title
+            logo_path = "Logo.png"
+            if os.path.exists(logo_path):
+                pdf.image(logo_path, x=10, y=10, w=28)
+            pdf.set_xy(42, 12)
+            pdf.set_text_color(*BRAND_RED)
+            pdf.set_font("Helvetica", "B", 18)
+            pdf.cell(0, 8, "MULTIFAMILY INVESTMENT REPORT", ln=True)
+            pdf.set_xy(42, 21)
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_text_color(*BLACK)
+            pdf.cell(0, 6, prop_name, ln=True)
+            pdf.set_xy(42, 27)
+            pdf.set_font("Helvetica", "", 9)
+            pdf.set_text_color(*MID_GRAY)
+            pdf.cell(0, 5, f"{prop_address}  |  ZIP {prop_zip}  |  {units} units  |  Mode: {mode_key}", ln=True)
+            pdf.set_xy(42, 32)
+            pdf.cell(0, 5, f"Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')}", ln=True)
+
+            # Red divider
+            pdf.set_y(40)
+            pdf.set_draw_color(*BRAND_RED)
+            pdf.set_line_width(0.8)
+            pdf.line(10, 40, 200, 40)
+            pdf.ln(4)
+
+            # KPI Row
+            pdf.set_x(10)
+            kpis_top = [
+                ("MONTHLY CF",      usd(r["monthly_cf"])),
+                ("NOI / YEAR",      usd(r["noi"])),
+                ("CAP RATE",        pct(r["cap_rate"])),
+                ("CASH-ON-CASH",    pct(r["coc"])),
+                ("DSCR",            num(r["dscr"]) if math.isfinite(r["dscr"]) else "INF"),
+                ("EQUITY MULTIPLE", f"{r['equity_multiple']:.2f}x"),
+                ("IRR",             pct(r["irr"]) if r["irr"] else "--"),
+            ]
+            start_x = 10
+            for label, value in kpis_top:
+                pdf.set_xy(start_x, 46)
+                pdf.kpi_box(label, value)
+                start_x += 28
+            pdf.ln(20)
+
+            # P&L
+            pdf.section_title("  PROFIT & LOSS SUMMARY")
+            shade = False
+            for label, val in [
+                ("Gross Potential Rent",     usd(r["gpr"])),
+                ("Vacancy Loss",             f"({usd(r['vacancy_loss'])})"),
+                ("Effective Gross Income",   usd(r["egi"])),
+                ("Total Operating Expenses", usd(r["total_opex"])),
+                ("Expense Ratio",            pct(r["expense_ratio"])),
+                ("Net Operating Income",     usd(r["noi"])),
+                ("Annual Debt Service",      f"({usd(r['annual_debt_service'])})"),
+                ("Annual Cash Flow",         usd(r["annual_cf"])),
+                ("Monthly Cash Flow",        usd(r["monthly_cf"])),
+                ("CF per Unit per Month",    usd(r["cf_per_unit"])),
+            ]:
+                pdf.row(label, val, shade); shade = not shade
+
+            # Acquisition
+            pdf.ln(2)
+            pdf.section_title("  ACQUISITION & FINANCING")
+            shade = False
+            for label, val in [
+                ("Purchase Price",      usd(purchase_price)),
+                ("Closing Costs",       usd(r["closing_costs"])),
+                ("Rehab / CapEx",       usd(rehab_cost)),
+                ("Total Acquisition",   usd(r["total_acq"])),
+                ("Loan Amount",         usd(r["loan_amount"])),
+                ("Down Payment",        usd(r["down_payment"])),
+                ("Total Cash Invested", usd(r["total_cash_invested"])),
+                ("Monthly Mortgage",    usd(r["monthly_mortgage"])),
+                ("LTV",                 pct(r["ltv"])),
+            ]:
+                pdf.row(label, val, shade); shade = not shade
+
+            # Key Ratios
+            pdf.ln(2)
+            pdf.section_title("  KEY INVESTMENT RATIOS")
+            shade = False
+            for label, val in [
+                ("Cap Rate",        pct(r["cap_rate"])),
+                ("Cash-on-Cash",    pct(r["coc"])),
+                ("DSCR",            num(r["dscr"]) if math.isfinite(r["dscr"]) else "INF"),
+                ("GRM",             num(r["grm"], 1)),
+                ("Rent-to-Price",   pct(r["rent_to_price"], 3)),
+                ("Break-Even Occ.", pct(r["be_occ"])),
+                ("Price per Unit",  usd(r["price_per_unit"])),
+            ]:
+                pdf.row(label, val, shade); shade = not shade
+
+            # Charts Page
+            pdf.add_page()
+            if os.path.exists(logo_path):
+                pdf.image(logo_path, x=10, y=10, w=18)
+            pdf.set_xy(32, 13)
+            pdf.set_text_color(*BRAND_RED)
+            pdf.set_font("Helvetica", "B", 13)
+            pdf.cell(0, 7, "CHARTS & VISUAL ANALYSIS", ln=True)
+            pdf.set_draw_color(*BRAND_RED)
+            pdf.line(10, 23, 200, 23)
             pdf.ln(6)
-            pdf.section_title("KEY METRICS")
-            for label, val in [
-                ("Monthly Cash Flow", usd(r["monthly_cf"])), ("Annual Cash Flow", usd(r["annual_cf"])),
-                ("NOI / Year", usd(r["noi"])), ("Cap Rate", pct(r["cap_rate"])),
-                ("Cash-on-Cash", pct(r["coc"])), ("DSCR", num(r["dscr"]) if math.isfinite(r["dscr"]) else "∞"),
-                ("GRM", num(r["grm"],1)), ("Break-Even Occ.", pct(r["be_occ"])),
-                ("LTV", pct(r["ltv"])), ("Price / Unit", usd(r["price_per_unit"])),
-            ]: pdf.row(label, val)
+            pdf.image(chart1_path, x=10,  y=28,  w=88)
+            pdf.image(chart3_path, x=108, y=28,  w=88)
+            pdf.image(chart2_path, x=10,  y=118, w=88)
+            pdf.image(chart4_path, x=108, y=118, w=88)
+
+            # Projection Table
+            pdf.set_y(210)
+            pdf.set_text_color(*BRAND_RED)
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_fill_color(*LIGHT_GRAY)
+            pdf.cell(0, 8, "  YEAR-BY-YEAR PROJECTION", ln=True, fill=True)
             pdf.ln(2)
-            pdf.section_title("ACQUISITION & FINANCING")
+            col_w = [14, 32, 32, 32, 24, 38]
+            headers = ["Year","NOI","Cash Flow","Cum. CF","Cap Rate","Prop. Value"]
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_text_color(*WHITE)
+            pdf.set_fill_color(*BRAND_RED)
+            pdf.set_x(10)
+            for h, w in zip(headers, col_w):
+                pdf.cell(w, 6, h, fill=True, align="C")
+            pdf.ln()
+            shade = False
+            for _, row_data in r["proj_df"].iterrows():
+                pdf.set_font("Helvetica", "", 8)
+                pdf.set_text_color(*BLACK)
+                if shade:
+                    pdf.set_fill_color(*LIGHT_GRAY)
+                else:
+                    pdf.set_fill_color(*WHITE)
+                pdf.set_x(10)
+                pdf.cell(col_w[0], 5.5, str(int(row_data["Year"])),        fill=shade, align="C")
+                pdf.cell(col_w[1], 5.5, usd(row_data["NOI"]),              fill=shade, align="R")
+                pdf.cell(col_w[2], 5.5, usd(row_data["Cash Flow"]),        fill=shade, align="R")
+                pdf.cell(col_w[3], 5.5, usd(row_data["Cum. Cash Flow"]),   fill=shade, align="R")
+                pdf.cell(col_w[4], 5.5, pct(row_data["Cap Rate"]),         fill=shade, align="C")
+                pdf.cell(col_w[5], 5.5, usd(row_data["Property Value"]),   fill=shade, align="R")
+                pdf.ln()
+                shade = not shade
+
+            # Exit Page
+            pdf.add_page()
+            if os.path.exists(logo_path):
+                pdf.image(logo_path, x=10, y=10, w=18)
+            pdf.set_xy(32, 13)
+            pdf.set_text_color(*BRAND_RED)
+            pdf.set_font("Helvetica", "B", 13)
+            pdf.cell(0, 7, "EXIT ANALYSIS & TOTAL RETURNS", ln=True)
+            pdf.set_draw_color(*BRAND_RED)
+            pdf.line(10, 23, 200, 23)
+            pdf.ln(6)
+            pdf.section_title("  EXIT SUMMARY")
+            shade = False
             for label, val in [
-                ("Purchase Price", usd(purchase_price)), ("Closing Costs", usd(r["closing_costs"])),
-                ("Rehab / CapEx", usd(rehab_cost)), ("Loan Amount", usd(r["loan_amount"])),
-                ("Down Payment", usd(r["down_payment"])), ("Total Cash Invested", usd(r["total_cash_invested"])),
-                ("Monthly Mortgage", usd(r["monthly_mortgage"])),
-            ]: pdf.row(label, val)
-            pdf.ln(2)
-            pdf.section_title("P&L")
-            for label, val in [
-                ("Gross Potential Rent", usd(r["gpr"])), ("Vacancy Loss", f"({usd(r['vacancy_loss'])})"),
-                ("Effective Gross Income", usd(r["egi"])), ("Total OpEx", usd(r["total_opex"])),
-                ("NOI", usd(r["noi"])), ("Annual Cash Flow", usd(r["annual_cf"])),
-            ]: pdf.row(label, val)
-            pdf.ln(2)
-            pdf.section_title("EXIT ANALYSIS")
-            for label, val in [
-                ("Hold Period", f"{hold_years} years"), ("Exit Cap Rate", pct(exit_cap_rate)),
-                ("Exit Value", usd(r["exit_value"])), ("Total Profit", usd(r["total_profit"])),
-                ("Equity Multiple", f"{r['equity_multiple']:.2f}x"),
-                ("IRR", pct(r["irr"]) if r["irr"] else "—"),
-                ("Principal Paydown", usd(r["total_paydown"])),
-            ]: pdf.row(label, val)
-            if len(r["proj_df"]) > 0:
-                pdf.ln(2); pdf.section_title("YEAR-BY-YEAR PROJECTION")
-                col_w = [15,35,35,35,25,38]
-                headers = ["Year","NOI","Cash Flow","Cum. CF","Cap Rate","Prop. Value"]
-                pdf.set_font("Helvetica","B",8); pdf.set_text_color(74,158,255)
-                for h,w in zip(headers,col_w): pdf.cell(w,5.5,h)
-                pdf.ln(); pdf.set_font("Helvetica","",8); pdf.set_text_color(226,240,255)
-                for _,row_data in r["proj_df"].iterrows():
-                    pdf.cell(col_w[0],5.2,str(int(row_data["Year"])))
-                    pdf.cell(col_w[1],5.2,usd(row_data["NOI"]))
-                    pdf.cell(col_w[2],5.2,usd(row_data["Cash Flow"]))
-                    pdf.cell(col_w[3],5.2,usd(row_data["Cum. Cash Flow"]))
-                    pdf.cell(col_w[4],5.2,pct(row_data["Cap Rate"]))
-                    pdf.cell(col_w[5],5.2,usd(row_data["Property Value"]))
-                    pdf.ln()
-            pdf.set_y(-18); pdf.set_font("Helvetica","",7); pdf.set_text_color(61,90,120)
-            pdf.cell(0,5,"Hugo's Multifamily Pro Calculator  |  Personal investment analysis only  |  Not financial advice.",align="C")
+                ("Hold Period",          f"{hold_years} years"),
+                ("Exit Cap Rate",        pct(exit_cap_rate)),
+                ("Projected Exit Value", usd(r["exit_value"])),
+                ("Principal Paydown",    usd(r["total_paydown"])),
+                ("Cumulative Cash Flow", usd(r["cum_cf"])),
+                ("Total Profit",         usd(r["total_profit"])),
+                ("Equity Multiple",      f"{r['equity_multiple']:.2f}x"),
+                ("IRR",                  pct(r["irr"]) if r["irr"] else "--"),
+            ]:
+                pdf.row(label, val, shade); shade = not shade
+
+            # Footer
+            pdf.set_y(-15)
+            pdf.set_draw_color(*BRAND_RED)
+            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+            pdf.set_font("Helvetica", "", 7)
+            pdf.set_text_color(*MID_GRAY)
+            pdf.cell(0, 8, "B. Horizon Properties LLC  |  Personal investment analysis  |  Not financial advice.", align="C")
+
+            # Output
             pdf_output = pdf.output(dest="S")
             pdf_bytes = pdf_output.encode("latin-1") if isinstance(pdf_output, str) else bytes(pdf_output)
-            st.download_button(label="⬇️ Download PDF Report", data=pdf_bytes,
-                               file_name=f"{safe_name}_report.pdf", mime="application/pdf",
-                               use_container_width=True)
+            st.download_button(
+                label="⬇️ Download PDF Report",
+                data=pdf_bytes,
+                file_name=f"{safe_name}_BHorizon_report.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
             st.success("✅ PDF ready — click above to download.")
-        except ImportError:
-            st.error("Run: pip install fpdf2")
+
+        except ImportError as e:
+            st.error(f"Missing library: {e}. Run: pip install fpdf2 matplotlib")
         except Exception as e:
-            st.error(f"PDF error: {e}")
+            st.error(f"PDF error: {e}")    
+# ──────────────────────────────────────────────────────────────────────────────
+#  TAB 7 — DEAL VS MARKET
+# ──────────────────────────────────────────────────────────────────────────────
+with tabs[6]:
+    st.subheader("📊 Asking Price vs Real Market Value")
+    st.caption("Enter local market benchmarks to evaluate if this deal is fairly priced.")
+
+    st.markdown("### 🏙️ Market Benchmarks — Enter Local Data")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        mkt_cap_rate    = st.number_input("Market Cap Rate (%)",        1.0, 20.0, 6.5, 0.1,
+                                          help="Average cap rate for similar properties in this market")
+        mkt_price_unit  = st.number_input("Market Price / Unit ($)",    0, 1_000_000, 110_000, 1_000,
+                                          help="Average price per unit for comparable multifamily")
+    with col2:
+        mkt_rent_unit   = st.number_input("Market Avg Rent / Unit ($)", 0, 10_000, 1_250, 25,
+                                          help="Average market rent for comparable units in this ZIP")
+        mkt_grm         = st.number_input("Market GRM",                 1.0, 30.0, 11.0, 0.5,
+                                          help="Gross Rent Multiplier for comparable sales")
+    with col3:
+        mkt_coc         = st.number_input("Market Avg CoC Return (%)",  0.0, 30.0, 7.0, 0.5,
+                                          help="Average cash-on-cash return investors accept in this market")
+        mkt_vacancy     = st.number_input("Market Vacancy Rate (%)",    0.0, 30.0, 6.0, 0.5,
+                                          help="Average vacancy rate in this submarket")
+
+    st.divider()
+
+    # ── Fair Value Calculations ───────────────────────────────────────────────
+    fair_value_cap     = (r["noi"] / (mkt_cap_rate / 100)) if mkt_cap_rate > 0 else 0
+    fair_value_grm     = (r["gpr"] * mkt_grm)
+    fair_value_ppu     = (mkt_price_unit * units)
+    fair_value_avg     = (fair_value_cap + fair_value_grm + fair_value_ppu) / 3
+
+    delta_cap          = fair_value_cap  - purchase_price
+    delta_grm          = fair_value_grm  - purchase_price
+    delta_ppu          = fair_value_ppu  - purchase_price
+    delta_avg          = fair_value_avg  - purchase_price
+    delta_pct          = (delta_avg / purchase_price * 100) if purchase_price > 0 else 0
+
+    # ── Verdict Banner ────────────────────────────────────────────────────────
+    st.markdown("### 🏷️ Valuation Verdict")
+    vc1, vc2, vc3, vc4 = st.columns(4)
+    with vc1: st.metric("Fair Value (Cap Rate)", usd(fair_value_cap),
+                         delta=f"{'+' if delta_cap>=0 else ''}{usd(delta_cap)}")
+    with vc2: st.metric("Fair Value (GRM)",      usd(fair_value_grm),
+                         delta=f"{'+' if delta_grm>=0 else ''}{usd(delta_grm)}")
+    with vc3: st.metric("Fair Value (Price/Unit)",usd(fair_value_ppu),
+                         delta=f"{'+' if delta_ppu>=0 else ''}{usd(delta_ppu)}")
+    with vc4: st.metric("Avg Fair Value",         usd(fair_value_avg),
+                         delta=f"{'+' if delta_avg>=0 else ''}{usd(delta_avg)}")
+
+    if delta_pct >= 10:
+        st.success(f"✅ **UNDERPRICED by {abs(delta_pct):.1f}%** — You're buying below market value. Strong deal.")
+    elif delta_pct >= 0:
+        st.info(f"ℹ️ **FAIRLY PRICED (+{delta_pct:.1f}%)** — In line with market. Negotiate if possible.")
+    elif delta_pct >= -10:
+        st.warning(f"⚠️ **SLIGHTLY OVERPRICED ({delta_pct:.1f}%)** — Asking price is above market average.")
+    else:
+        st.error(f"🔴 **OVERPRICED by {abs(delta_pct):.1f}%** — Significant premium over market value.")
+
+    st.divider()
+
+    # ── Comparison Table ──────────────────────────────────────────────────────
+    st.markdown("### 📋 Deal vs Market — Full Comparison")
+
+    def compare_status(deal_val, mkt_val, higher_is_better=True):
+        if mkt_val == 0: return "ℹ️"
+        diff = (deal_val - mkt_val) / mkt_val * 100
+        if higher_is_better:
+            return "🟢" if diff >= 5 else ("🔴" if diff <= -5 else "🟡")
+        else:
+            return "🟢" if diff <= -5 else ("🔴" if diff >= 5 else "🟡")
+
+    comparison_data = [
+        ("Cap Rate",        f"{r['cap_rate']:.2f}%",   f"{mkt_cap_rate:.2f}%",
+         compare_status(r["cap_rate"], mkt_cap_rate, True),
+         "Higher cap rate = better yield vs market"),
+        ("Price / Unit",    usd(r["price_per_unit"]),  usd(mkt_price_unit),
+         compare_status(r["price_per_unit"], mkt_price_unit, False),
+         "Lower price/unit = better acquisition value"),
+        ("Avg Rent / Unit", usd(avg_monthly_rent),     usd(mkt_rent_unit),
+         compare_status(avg_monthly_rent, mkt_rent_unit, True),
+         "Higher rent = stronger income vs market"),
+        ("GRM",             f"{r['grm']:.1f}",          f"{mkt_grm:.1f}",
+         compare_status(r["grm"], mkt_grm, False),
+         "Lower GRM = cheaper relative to rent"),
+        ("Cash-on-Cash",    f"{r['coc']:.2f}%",         f"{mkt_coc:.2f}%",
+         compare_status(r["coc"], mkt_coc, True),
+         "Higher CoC = better cash yield vs market"),
+        ("Vacancy Rate",    f"{vacancy_pct:.1f}%",      f"{mkt_vacancy:.1f}%",
+         compare_status(vacancy_pct, mkt_vacancy, False),
+         "Lower vacancy = less income loss vs market"),
+    ]
+
+    header_cols = st.columns([2, 2, 2, 1, 3])
+    header_cols[0].markdown("**Metric**")
+    header_cols[1].markdown("**Your Deal**")
+    header_cols[2].markdown("**Market**")
+    header_cols[3].markdown("**Status**")
+    header_cols[4].markdown("**Insight**")
+    st.markdown("---")
+    for metric, deal_v, mkt_v, status, insight in comparison_data:
+        cols = st.columns([2, 2, 2, 1, 3])
+        cols[0].markdown(f"**{metric}**")
+        cols[1].markdown(f"`{deal_v}`")
+        cols[2].markdown(f"`{mkt_v}`")
+        cols[3].markdown(status)
+        cols[4].markdown(f"*{insight}*")
+
+    st.divider()
+
+    # ── Bar Chart ─────────────────────────────────────────────────────────────
+    st.markdown("### 📊 Visual Comparison")
+    ch1, ch2 = st.columns(2)
+    with ch1:
+        fig_val = go.Figure()
+        fig_val.add_trace(go.Bar(
+            name="Asking Price",
+            x=["Cap Rate Method", "GRM Method", "Price/Unit Method", "Average"],
+            y=[purchase_price, purchase_price, purchase_price, purchase_price],
+            marker_color="#ef4444", opacity=0.85,
+        ))
+        fig_val.add_trace(go.Bar(
+            name="Fair Value",
+            x=["Cap Rate Method", "GRM Method", "Price/Unit Method", "Average"],
+            y=[fair_value_cap, fair_value_grm, fair_value_ppu, fair_value_avg],
+            marker_color="#22c55e", opacity=0.85,
+        ))
+        fig_val.update_layout(**PLOT_LAYOUT, barmode="group",
+                              title="Asking Price vs Fair Value by Method",
+                              height=380, yaxis_title="Value ($)")
+        st.plotly_chart(fig_val, use_container_width=True)
+
+    with ch2:
+        metrics_labels = ["Cap Rate", "CoC Return", "GRM (inv.)", "Price/Unit (inv.)"]
+        deal_normalized = [
+            r["cap_rate"] / mkt_cap_rate if mkt_cap_rate else 1,
+            r["coc"] / mkt_coc if mkt_coc else 1,
+            mkt_grm / r["grm"] if r["grm"] else 1,
+            mkt_price_unit / r["price_per_unit"] if r["price_per_unit"] else 1,
+        ]
+        colors_radar = ["#22c55e" if v >= 1 else "#ef4444" for v in deal_normalized]
+        fig_bar = go.Figure(go.Bar(
+            x=metrics_labels,
+            y=deal_normalized,
+            marker_color=colors_radar,
+            text=[f"{v:.2f}x" for v in deal_normalized],
+            textposition="outside",
+        ))
+        fig_bar.add_hline(y=1.0, line_dash="dash", line_color="#f59e0b",
+                          annotation_text="Market baseline (1.0x)")
+        fig_bar.update_layout(**PLOT_LAYOUT,
+                              title="Deal Performance vs Market (>1x = beats market)",
+                              height=380, yaxis_title="Ratio vs Market")
+        st.plotly_chart(fig_bar, use_container_width=True)            
 # ──────────────────────────────────────────────────────────────────────────────
 #  TAB 8 — DICTIONARY & FORMULAS
 # ──────────────────────────────────────────────────────────────────────────────
