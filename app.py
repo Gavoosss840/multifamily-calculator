@@ -352,6 +352,7 @@ tabs = st.tabs([
     "🔄 Refinance",
     "🔨 BRRRR",
     "🌍 Market Data",
+    "📊 Deal vs Market",
     "💾 Save / Load / PDF",
     "📖 Dictionary & Formulas",
 ])
@@ -688,7 +689,7 @@ with tabs[5]:
 # ──────────────────────────────────────────────────────────────────────────────
 #  TAB 7 — SAVE / LOAD / PDF
 # ──────────────────────────────────────────────────────────────────────────────
-with tabs[6]:
+with tabs[8]:
     st.subheader("💾 Profile Management")
     col_save, col_load = st.columns(2)
 
@@ -1049,6 +1050,161 @@ if st.button("🖨️ Generate PDF Report", use_container_width=True, type="prim
             st.error(f"Missing library: {e}. Run: pip install fpdf2 matplotlib")
         except Exception as e:
             st.error(f"PDF error: {e}")    
+# ──────────────────────────────────────────────────────────────────────────────
+#  TAB 7 — DEAL VS MARKET
+# ──────────────────────────────────────────────────────────────────────────────
+with tabs[6]:
+    st.subheader("📊 Asking Price vs Real Market Value")
+    st.caption("Enter local market benchmarks to evaluate if this deal is fairly priced.")
+
+    st.markdown("### 🏙️ Market Benchmarks — Enter Local Data")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        mkt_cap_rate    = st.number_input("Market Cap Rate (%)",        1.0, 20.0, 6.5, 0.1,
+                                          help="Average cap rate for similar properties in this market")
+        mkt_price_unit  = st.number_input("Market Price / Unit ($)",    0, 1_000_000, 110_000, 1_000,
+                                          help="Average price per unit for comparable multifamily")
+    with col2:
+        mkt_rent_unit   = st.number_input("Market Avg Rent / Unit ($)", 0, 10_000, 1_250, 25,
+                                          help="Average market rent for comparable units in this ZIP")
+        mkt_grm         = st.number_input("Market GRM",                 1.0, 30.0, 11.0, 0.5,
+                                          help="Gross Rent Multiplier for comparable sales")
+    with col3:
+        mkt_coc         = st.number_input("Market Avg CoC Return (%)",  0.0, 30.0, 7.0, 0.5,
+                                          help="Average cash-on-cash return investors accept in this market")
+        mkt_vacancy     = st.number_input("Market Vacancy Rate (%)",    0.0, 30.0, 6.0, 0.5,
+                                          help="Average vacancy rate in this submarket")
+
+    st.divider()
+
+    # ── Fair Value Calculations ───────────────────────────────────────────────
+    fair_value_cap     = (r["noi"] / (mkt_cap_rate / 100)) if mkt_cap_rate > 0 else 0
+    fair_value_grm     = (r["gpr"] * mkt_grm)
+    fair_value_ppu     = (mkt_price_unit * units)
+    fair_value_avg     = (fair_value_cap + fair_value_grm + fair_value_ppu) / 3
+
+    delta_cap          = fair_value_cap  - purchase_price
+    delta_grm          = fair_value_grm  - purchase_price
+    delta_ppu          = fair_value_ppu  - purchase_price
+    delta_avg          = fair_value_avg  - purchase_price
+    delta_pct          = (delta_avg / purchase_price * 100) if purchase_price > 0 else 0
+
+    # ── Verdict Banner ────────────────────────────────────────────────────────
+    st.markdown("### 🏷️ Valuation Verdict")
+    vc1, vc2, vc3, vc4 = st.columns(4)
+    with vc1: st.metric("Fair Value (Cap Rate)", usd(fair_value_cap),
+                         delta=f"{'+' if delta_cap>=0 else ''}{usd(delta_cap)}")
+    with vc2: st.metric("Fair Value (GRM)",      usd(fair_value_grm),
+                         delta=f"{'+' if delta_grm>=0 else ''}{usd(delta_grm)}")
+    with vc3: st.metric("Fair Value (Price/Unit)",usd(fair_value_ppu),
+                         delta=f"{'+' if delta_ppu>=0 else ''}{usd(delta_ppu)}")
+    with vc4: st.metric("Avg Fair Value",         usd(fair_value_avg),
+                         delta=f"{'+' if delta_avg>=0 else ''}{usd(delta_avg)}")
+
+    if delta_pct >= 10:
+        st.success(f"✅ **UNDERPRICED by {abs(delta_pct):.1f}%** — You're buying below market value. Strong deal.")
+    elif delta_pct >= 0:
+        st.info(f"ℹ️ **FAIRLY PRICED (+{delta_pct:.1f}%)** — In line with market. Negotiate if possible.")
+    elif delta_pct >= -10:
+        st.warning(f"⚠️ **SLIGHTLY OVERPRICED ({delta_pct:.1f}%)** — Asking price is above market average.")
+    else:
+        st.error(f"🔴 **OVERPRICED by {abs(delta_pct):.1f}%** — Significant premium over market value.")
+
+    st.divider()
+
+    # ── Comparison Table ──────────────────────────────────────────────────────
+    st.markdown("### 📋 Deal vs Market — Full Comparison")
+
+    def compare_status(deal_val, mkt_val, higher_is_better=True):
+        if mkt_val == 0: return "ℹ️"
+        diff = (deal_val - mkt_val) / mkt_val * 100
+        if higher_is_better:
+            return "🟢" if diff >= 5 else ("🔴" if diff <= -5 else "🟡")
+        else:
+            return "🟢" if diff <= -5 else ("🔴" if diff >= 5 else "🟡")
+
+    comparison_data = [
+        ("Cap Rate",        f"{r['cap_rate']:.2f}%",   f"{mkt_cap_rate:.2f}%",
+         compare_status(r["cap_rate"], mkt_cap_rate, True),
+         "Higher cap rate = better yield vs market"),
+        ("Price / Unit",    usd(r["price_per_unit"]),  usd(mkt_price_unit),
+         compare_status(r["price_per_unit"], mkt_price_unit, False),
+         "Lower price/unit = better acquisition value"),
+        ("Avg Rent / Unit", usd(avg_monthly_rent),     usd(mkt_rent_unit),
+         compare_status(avg_monthly_rent, mkt_rent_unit, True),
+         "Higher rent = stronger income vs market"),
+        ("GRM",             f"{r['grm']:.1f}",          f"{mkt_grm:.1f}",
+         compare_status(r["grm"], mkt_grm, False),
+         "Lower GRM = cheaper relative to rent"),
+        ("Cash-on-Cash",    f"{r['coc']:.2f}%",         f"{mkt_coc:.2f}%",
+         compare_status(r["coc"], mkt_coc, True),
+         "Higher CoC = better cash yield vs market"),
+        ("Vacancy Rate",    f"{vacancy_pct:.1f}%",      f"{mkt_vacancy:.1f}%",
+         compare_status(vacancy_pct, mkt_vacancy, False),
+         "Lower vacancy = less income loss vs market"),
+    ]
+
+    header_cols = st.columns([2, 2, 2, 1, 3])
+    header_cols[0].markdown("**Metric**")
+    header_cols[1].markdown("**Your Deal**")
+    header_cols[2].markdown("**Market**")
+    header_cols[3].markdown("**Status**")
+    header_cols[4].markdown("**Insight**")
+    st.markdown("---")
+    for metric, deal_v, mkt_v, status, insight in comparison_data:
+        cols = st.columns([2, 2, 2, 1, 3])
+        cols[0].markdown(f"**{metric}**")
+        cols[1].markdown(f"`{deal_v}`")
+        cols[2].markdown(f"`{mkt_v}`")
+        cols[3].markdown(status)
+        cols[4].markdown(f"*{insight}*")
+
+    st.divider()
+
+    # ── Bar Chart ─────────────────────────────────────────────────────────────
+    st.markdown("### 📊 Visual Comparison")
+    ch1, ch2 = st.columns(2)
+    with ch1:
+        fig_val = go.Figure()
+        fig_val.add_trace(go.Bar(
+            name="Asking Price",
+            x=["Cap Rate Method", "GRM Method", "Price/Unit Method", "Average"],
+            y=[purchase_price, purchase_price, purchase_price, purchase_price],
+            marker_color="#ef4444", opacity=0.85,
+        ))
+        fig_val.add_trace(go.Bar(
+            name="Fair Value",
+            x=["Cap Rate Method", "GRM Method", "Price/Unit Method", "Average"],
+            y=[fair_value_cap, fair_value_grm, fair_value_ppu, fair_value_avg],
+            marker_color="#22c55e", opacity=0.85,
+        ))
+        fig_val.update_layout(**PLOT_LAYOUT, barmode="group",
+                              title="Asking Price vs Fair Value by Method",
+                              height=380, yaxis_title="Value ($)")
+        st.plotly_chart(fig_val, use_container_width=True)
+
+    with ch2:
+        metrics_labels = ["Cap Rate", "CoC Return", "GRM (inv.)", "Price/Unit (inv.)"]
+        deal_normalized = [
+            r["cap_rate"] / mkt_cap_rate if mkt_cap_rate else 1,
+            r["coc"] / mkt_coc if mkt_coc else 1,
+            mkt_grm / r["grm"] if r["grm"] else 1,
+            mkt_price_unit / r["price_per_unit"] if r["price_per_unit"] else 1,
+        ]
+        colors_radar = ["#22c55e" if v >= 1 else "#ef4444" for v in deal_normalized]
+        fig_bar = go.Figure(go.Bar(
+            x=metrics_labels,
+            y=deal_normalized,
+            marker_color=colors_radar,
+            text=[f"{v:.2f}x" for v in deal_normalized],
+            textposition="outside",
+        ))
+        fig_bar.add_hline(y=1.0, line_dash="dash", line_color="#f59e0b",
+                          annotation_text="Market baseline (1.0x)")
+        fig_bar.update_layout(**PLOT_LAYOUT,
+                              title="Deal Performance vs Market (>1x = beats market)",
+                              height=380, yaxis_title="Ratio vs Market")
+        st.plotly_chart(fig_bar, use_container_width=True)            
 # ──────────────────────────────────────────────────────────────────────────────
 #  TAB 8 — DICTIONARY & FORMULAS
 # ──────────────────────────────────────────────────────────────────────────────
