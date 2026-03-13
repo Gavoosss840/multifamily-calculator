@@ -875,7 +875,7 @@ with tabs[6]:
             pdf.add_page()
 
             # ── Logo + Title block ────────────────────────────────────────
-            logo_path = "logo.png"
+            logo_path = "Logo.png"
             if os.path.exists(logo_path):
                 pdf.image(logo_path, x=10, y=10, w=28)
             pdf.set_xy(42, 12)
