@@ -838,21 +838,19 @@ if st.button("🖨️ Generate PDF Report", use_container_width=True, type="prim
                     self.set_text_color(*BLACK)
                     self.cell(0, 5.5, str(value), ln=True, fill=shade)
 
-                def kpi_box(self, label, value):
+                def kpi_box(self, label, value, x, y):
                     self.set_fill_color(*LIGHT_GRAY)
                     self.set_draw_color(*BRAND_RED)
                     self.set_line_width(0.4)
-                    self.rect(self.get_x(), self.get_y(), 26, 16, "DF")
+                    self.rect(x, y, 26, 16, "DF")
                     self.set_font("Helvetica", "", 6)
                     self.set_text_color(*MID_GRAY)
+                    self.set_xy(x, y + 1)
                     self.cell(26, 6, label, align="C")
-                    self.ln(6)
                     self.set_font("Helvetica", "B", 9)
                     self.set_text_color(*BRAND_RED)
-                    x = self.get_x()
+                    self.set_xy(x, y + 7)
                     self.cell(26, 8, value, align="C")
-                    self.set_xy(x + 26, self.get_y() - 6)
-                    self.set_text_color(*BLACK)
 
             pdf = Report()
             pdf.set_auto_page_break(auto=True, margin=15)
@@ -885,7 +883,6 @@ if st.button("🖨️ Generate PDF Report", use_container_width=True, type="prim
             pdf.ln(4)
 
             # KPI Row
-            pdf.set_x(10)
             kpis_top = [
                 ("MONTHLY CF",      usd(r["monthly_cf"])),
                 ("NOI / YEAR",      usd(r["noi"])),
@@ -897,10 +894,9 @@ if st.button("🖨️ Generate PDF Report", use_container_width=True, type="prim
             ]
             start_x = 10
             for label, value in kpis_top:
-                pdf.set_xy(start_x, 46)
-                pdf.kpi_box(label, value)
+                pdf.kpi_box(label, value, start_x, 46)
                 start_x += 27
-            pdf.ln(20)
+            pdf.set_y(66)
 
             # P&L
             pdf.section_title("  PROFIT & LOSS SUMMARY")
