@@ -252,7 +252,7 @@ def run_calculations(p):
         y_noi  = y_egi - y_opex
         y_cf   = y_noi - annual_debt_service
         cum_cf += y_cf
-        y_cap  = (y_noi / p["purchase_price"] * 100) if p["purchase_price"] > 0 else 0.0
+        y_cap  = (y_noi / y_val * 100) if y_val > 0 else 0.0
         y_val  = p["purchase_price"] * (1 + p["appreciation_rate"] / 100) ** y
         y_paydown = 0.0
         if amort_df is not None:
